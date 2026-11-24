@@ -57,6 +57,7 @@ const run = async () => {
     const status = text.split('\r\n')[0] || '(no data)';
     const ok = /HTTP\/1\.[01] 200/.test(status);
     console.log(`TUNNEL ${ok ? 'OK' : 'FAILED'}\n  status: ${status}\n  bytes: ${received.length}`);
+    console.log('  raw head:', JSON.stringify(text.slice(0, 240)));
     process.exit(ok ? 0 : 1);
   } catch (e) {
     clearTimeout(timer);
