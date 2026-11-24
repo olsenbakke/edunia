@@ -117,7 +117,13 @@ jobs:
             echo "::notice title=Worker URL::$URL"
             echo "Worker URL: $URL"
             echo "### Deployed: $URL" >> "$GITHUB_STEP_SUMMARY"
-            echo "HTTP status: $(curl -s -o /dev/null -w '%{http_code}' -m 20 "$URL" || echo 'no response')" >> "$GITHUB_STEP_SUMMARY"
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' -m 25 "$URL" || echo 'no response')
+            echo "HTTP status: $STATUS" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Worker smoke test::$URL returned HTTP $STATUS"
+            SCRIPTS=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).result||[];process.stdout.write(r.map(x=>x.id).join(', '))}catch(e){process.stdout.write('')}})")
+            echo "::notice title=Scripts in account::$SCRIPTS"
           else
             echo "### Deploy output contained no workers.dev URL" >> "$GITHUB_STEP_SUMMARY"
           fi
