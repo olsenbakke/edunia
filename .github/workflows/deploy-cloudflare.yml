@@ -47,8 +47,12 @@ jobs:
         run: |
           set -u
           if [ -z "${CF_TOKEN:-}" ]; then
-            echo "::error::No Cloudflare token. Add the CLOUDFLARE_API_TOKEN repository secret (Settings -> Secrets and variables -> Actions), or pass cf_api_token when running this workflow manually."
-            exit 1
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::No Cloudflare token. Add the CLOUDFLARE_API_TOKEN repository secret (Settings -> Secrets and variables -> Actions), or pass cf_api_token when running this workflow manually."
+              exit 1
+            fi
+            echo "::notice title=Deploy skipped::CLOUDFLARE_API_TOKEN is not set, so nothing was deployed. Add the repository secret to enable automatic deploys."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
           fi
           BODY=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
             https://api.cloudflare.com/client/v4/user/tokens/verify)
@@ -60,6 +64,7 @@ jobs:
           fi
 
       - name: Resolve Account ID
+        if: env.SKIP_DEPLOY != 'true'
         run: |
           set -u
           if [ -n "${CLOUDFLARE_ACCOUNT_ID_SECRET:-}" ]; then
@@ -82,6 +87,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID_SECRET: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to Cloudflare Workers
+        if: env.SKIP_DEPLOY != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || inputs.cf_api_token }}
         run: |
