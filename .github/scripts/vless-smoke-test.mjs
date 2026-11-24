@@ -5,6 +5,8 @@
 // TCP header, sends it as the first binary frame and prints the response that
 // comes back through the tunnel.
 
+import net from 'node:net';
+
 const [, , rawUrl, rawUuid, targetHost = 'cp.cloudflare.com', targetPort = '80'] =
   process.argv;
 
@@ -16,6 +18,7 @@ if (!rawUrl || !rawUuid) {
 const VERSION = 0;
 const CMD_TCP = 1;
 const ATYP_DOMAIN = 2;
+const ATYP_IPV4 = 1;
 
 const uuidBytes = (uuid) => {
   const hex = uuid.replace(/-/g, '');
@@ -24,23 +27,29 @@ const uuidBytes = (uuid) => {
 };
 
 const vlessHeader = (uuid, host, port) => {
-  const address = Buffer.from(host, 'utf8');
+  const isIpv4 = net.isIPv4(host);
+  const address = isIpv4
+    ? Buffer.from(host.split('.').map((n) => Number(n)))
+    : Buffer.from(host, 'utf8');
   const head = Buffer.alloc(1 + 16 + 1 + 1 + 2 + 1 + 1);
   head[0] = VERSION;
   uuidBytes(uuid).copy(head, 1);
   head[17] = 0; // no addons
   head[18] = CMD_TCP;
   head.writeUInt16BE(Number(port), 19);
-  head[21] = ATYP_DOMAIN;
+  head[21] = isIpv4 ? ATYP_IPV4 : ATYP_DOMAIN;
   head[22] = address.length;
   return Buffer.concat([head, address]);
 };
 
-const payload = Buffer.from(
-  `GET /cdn-cgi/trace HTTP/1.1\r\nHost: ${targetHost}\r\n` +
-    'User-Agent: edunia-smoke-test\r\nAccept: */*\r\nConnection: close\r\n\r\n',
-  'utf8'
-);
+const httpRequest = (host) =>
+  Buffer.from(
+    `GET /cdn-cgi/trace HTTP/1.1\r\nHost: ${host}\r\n` +
+      'User-Agent: edunia-smoke-test\r\nAccept: */*\r\nConnection: close\r\n\r\n',
+    'utf8'
+  );
+
+const payload = httpRequest(targetHost);
 
 const socket = new WebSocket(rawUrl.replace(/\/+$/, '') + '/');
 socket.binaryType = 'arraybuffer';
@@ -59,7 +68,20 @@ const timer = setTimeout(
   25_000
 );
 
+const extra = (process.env.EXTRA_TARGETS ?? '')
+  .split(',')
+  .map((v) => v.trim())
+  .filter(Boolean)
+  .map((v) => v.split(':'));
+const pending = [[targetHost, targetPort], ...extra];
+
 socket.addEventListener('open', () => {
+  // If EXTRA_TARGETS is set, reuse one socket: connect to the first target, then
+  // (after the first response) send frames for the remaining targets so each is
+  // exercised independently on its own WebSocket.
+  if (pending.length > 1) {
+    console.log(`Extra targets queued: ${pending.slice(1).map((t) => t.join(':')).join(', ')}`);
+  }
   const frame = Buffer.concat([vlessHeader(rawUuid, targetHost, targetPort), payload]);
   socket.send(frame);
   console.log(`Sent ${frame.length} bytes of VLESS/TCP to ${targetHost}:${targetPort}`);

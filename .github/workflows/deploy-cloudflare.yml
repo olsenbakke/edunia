@@ -136,13 +136,22 @@ jobs:
           WORKER_URL="https://edcloudwasm.gavimovado.workers.dev"
           UUID_VALUE=$(node -e "const s=require('fs').readFileSync('wrangler.toml','utf8');const m=s.match(/^UUID\s*=\s*\"([^\"]+)\"/m);process.stdout.write(m?m[1]:'')")
           echo "Testing $WORKER_URL with UUID $UUID_VALUE"
-          if node .github/scripts/vless-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" cp.cloudflare.com 80 > /tmp/e2e.log 2>&1; then
-            sed 's/^/  /' /tmp/e2e.log
-            echo "::notice title=End-to-end tunnel OK::VLESS over WebSocket through $WORKER_URL reached the internet"
-            echo "### End-to-end tunnel OK" >> "$GITHUB_STEP_SUMMARY"
-          else
-            sed 's/^/  /' /tmp/e2e.log
-            MSG=$(tr '\n' '~' < /tmp/e2e.log | cut -c1-600)
-            echo "::warning title=Tunnel test failed::$MSG"
-            echo "### Tunnel test failed" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          run_case() {
+            local label="$1" host="$2" port="$3"
+            if node .github/scripts/vless-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" "$host" "$port" > "/tmp/e2e-${label}.log" 2>&1; then
+              sed 's/^/  /' "/tmp/e2e-${label}.log"
+              echo "::notice title=Tunnel OK ($label)::VLESS over WebSocket via $WORKER_URL reached $host:$port"
+              echo "- ✅ $label ($host:$port): tunnel OK" >> "$GITHUB_STEP_SUMMARY"
+            else
+              sed 's/^/  /' "/tmp/e2e-${label}.log"
+              MSG=$(tr '\n' '~' < "/tmp/e2e-${label}.log" | cut -c1-400)
+              echo "::warning title=Tunnel failed ($label)::$MSG"
+              echo "- ❌ $label ($host:$port): failed" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          # Domain target exercises the Worker's own DoH resolution path
+          run_case "domain" cp.cloudflare.com 80
+          # Raw IPv4 target exercises direct connect without DNS
+          run_case "ipv4" 1.1.1.1 80
+          # HTTPS target exercises the TLS path
+          run_case "https" cloudflare.com 443
