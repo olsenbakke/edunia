@@ -132,6 +132,13 @@ jobs:
             echo "::notice title=Worker URL::$URL (HTTP $STATUS on /)"
             echo "### Worker URL: $URL" >> "$GITHUB_STEP_SUMMARY"
             echo "This Worker only answers WebSocket upgrade requests and gRPC POSTs, so HTTP $STATUS on / is expected." >> "$GITHUB_STEP_SUMMARY"
+            WS=$(curl -s -o /dev/null -w '%{http_code}' -m 25 \
+              -H "Connection: Upgrade" -H "Upgrade: websocket" \
+              -H "Sec-WebSocket-Version: 13" \
+              -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+              "${URL}/?ed=2048" || echo 'no response')
+            echo "::notice title=WebSocket handshake::${URL}/ returned HTTP $WS (101 = proxy endpoint is live)"
+            echo "WebSocket handshake: HTTP $WS (101 means the proxy endpoint works)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::Could not determine the workers.dev URL; check the deploy step log."
           fi
