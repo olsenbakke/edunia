@@ -84,9 +84,16 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         run: |
-          set -o pipefail
-          npx -y wrangler@4 whoami 2>&1 | tee /tmp/whoami.log
-          npx -y wrangler@4 deploy 2>&1 | tee /tmp/deploy.log
+          npx -y wrangler@4 whoami > /tmp/whoami.log 2>&1 || true
+          tail -n 20 /tmp/whoami.log
+          if npx -y wrangler@4 deploy > /tmp/deploy.log 2>&1; then
+            tail -n 40 /tmp/deploy.log
+          else
+            tail -n 60 /tmp/deploy.log
+            MSG=$(tail -n 25 /tmp/deploy.log | tr '\n' '~' | tr -d '%\r')
+            echo "::error title=wrangler deploy failed::$MSG"
+            exit 1
+          fi
 
       - name: Report deployment URL
         if: always()
