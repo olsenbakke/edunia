@@ -105,7 +105,16 @@ jobs:
           if [ -f /tmp/deploy.log ]; then
             URL=$(grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev[^[:space:]]*' /tmp/deploy.log | head -n1 || true)
           fi
+          if [ -z "$URL" ]; then
+            SUB=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).result.subdomain||'')}catch(e){process.stdout.write('')}})")
+            if [ -n "$SUB" ]; then
+              URL="https://edcloudwasm.$SUB.workers.dev"
+            fi
+          fi
           if [ -n "$URL" ]; then
+            echo "::notice title=Worker URL::$URL"
             echo "Worker URL: $URL"
             echo "### Deployed: $URL" >> "$GITHUB_STEP_SUMMARY"
             echo "HTTP status: $(curl -s -o /dev/null -w '%{http_code}' -m 20 "$URL" || echo 'no response')" >> "$GITHUB_STEP_SUMMARY"
