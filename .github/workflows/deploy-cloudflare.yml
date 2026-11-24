@@ -95,6 +95,8 @@ jobs:
             echo "::error title=wrangler deploy failed::$MSG"
             exit 1
           fi
+          SUMMARY=$(grep -iE 'deployed|upload|workers\.dev|script' /tmp/deploy.log | tr '\n' '~' | tr -d '%\r' | cut -c1-800)
+          echo "::notice title=wrangler deploy output::$SUMMARY"
 
       - name: Verify deployment
         if: always()
@@ -114,9 +116,9 @@ jobs:
           fi
           if [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
             INFO=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/edcloudwasm" \
-              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).result||{};process.stdout.write('id='+r.id+' modified_on='+r.modified_on)}catch(e){process.stdout.write('not found')}})")
-            echo "::notice title=Deployed script::edcloudwasm $INFO"
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).result||[];process.stdout.write(r.map(x=>x.id+'@'+(x.modified_on||'')).join(', ')||'none')}catch(e){process.stdout.write('error')}})")
+            echo "::notice title=Scripts in account::$INFO"
             echo "Deployed script: $INFO" >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -n "$URL" ]; then
