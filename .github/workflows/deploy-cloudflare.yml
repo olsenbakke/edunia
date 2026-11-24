@@ -20,7 +20,6 @@ on:
   push:
     branches:
       - main
-      - "arena/**"
 
 permissions:
   contents: read
@@ -97,33 +96,34 @@ jobs:
             exit 1
           fi
 
-      - name: Report deployment URL
+      - name: Verify deployment
         if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || inputs.cf_api_token }}
         run: |
           set -u
           URL=""
           if [ -f /tmp/deploy.log ]; then
             URL=$(grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev[^[:space:]]*' /tmp/deploy.log | head -n1 || true)
           fi
-          if [ -z "$URL" ]; then
-            SUB=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
+          if [ -z "$URL" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            SUB=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
               | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).result.subdomain||'')}catch(e){process.stdout.write('')}})")
-            if [ -n "$SUB" ]; then
-              URL="https://edcloudwasm.$SUB.workers.dev"
-            fi
+            [ -n "$SUB" ] && URL="https://edcloudwasm.$SUB.workers.dev"
+          fi
+          if [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            INFO=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/edcloudwasm" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).result||{};process.stdout.write('id='+r.id+' modified_on='+r.modified_on)}catch(e){process.stdout.write('not found')}})")
+            echo "::notice title=Deployed script::edcloudwasm $INFO"
+            echo "Deployed script: $INFO" >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -n "$URL" ]; then
-            echo "::notice title=Worker URL::$URL"
-            echo "Worker URL: $URL"
-            echo "### Deployed: $URL" >> "$GITHUB_STEP_SUMMARY"
             STATUS=$(curl -s -o /dev/null -w '%{http_code}' -m 25 "$URL" || echo 'no response')
-            echo "HTTP status: $STATUS" >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice title=Worker smoke test::$URL returned HTTP $STATUS"
-            SCRIPTS=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
-              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).result||[];process.stdout.write(r.map(x=>x.id).join(', '))}catch(e){process.stdout.write('')}})")
-            echo "::notice title=Scripts in account::$SCRIPTS"
+            echo "::notice title=Worker URL::$URL (HTTP $STATUS on /)"
+            echo "### Worker URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+            echo "This Worker only answers WebSocket upgrade requests and gRPC POSTs, so HTTP $STATUS on / is expected." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### Deploy output contained no workers.dev URL" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Could not determine the workers.dev URL; check the deploy step log."
           fi
