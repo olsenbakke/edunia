@@ -139,6 +139,27 @@ jobs:
               "${URL}/?ed=2048" || echo 'no response')
             echo "::notice title=WebSocket handshake::${URL}/ returned HTTP $WS (101 = proxy endpoint is live)"
             echo "WebSocket handshake: HTTP $WS (101 means the proxy endpoint works)" >> "$GITHUB_STEP_SUMMARY"
+      - name: End-to-end VLESS tunnel test
+        if: always() && env.SKIP_DEPLOY != 'true'
+        env:
+          WORKER_URL: https://edcloudwasm.gavimovado.workers.dev
+        run: |
+          set -u
+          UUID_VALUE=$(node -e "const s=require('fs').readFileSync('wrangler.toml','utf8');const m=s.match(/^UUID\s*=\s*\"([^\"]+)\"/m);process.stdout.write(m?m[1]:'')")
+          if [ -z "$UUID_VALUE" ]; then
+            echo "::warning::Could not read UUID from wrangler.toml; skipping tunnel test."
+            exit 0
+          fi
+          if node .github/scripts/vless-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" cp.cloudflare.com 80 > /tmp/e2e.log 2>&1; then
+            sed 's/^/  /' /tmp/e2e.log
+            echo "::notice title=End-to-end tunnel OK::VLESS over WebSocket through $WORKER_URL reached the internet"
+            echo "### End-to-end tunnel OK" >> "$GITHUB_STEP_SUMMARY"
+          else
+            sed 's/^/  /' /tmp/e2e.log
+            MSG=$(tr '\n' '~' < /tmp/e2e.log | cut -c1-600)
+            echo "::warning title=Tunnel test failed::$MSG"
+          fi
+
           else
             echo "::warning::Could not determine the workers.dev URL; check the deploy step log."
           fi
