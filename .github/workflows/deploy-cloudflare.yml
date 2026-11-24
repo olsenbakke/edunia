@@ -155,3 +155,22 @@ jobs:
           run_case "ipv4" 1.1.1.1 80
           # HTTPS target exercises the TLS path
           run_case "https" cloudflare.com 443
+
+      - name: End-to-end xHTTP (gRPC POST) tunnel test
+        id: xhttp
+        if: always() && env.SKIP_DEPLOY != 'true'
+        continue-on-error: true
+        run: |
+          set +e
+          WORKER_URL="https://edcloudwasm.gavimovado.workers.dev"
+          UUID_VALUE=$(node -e "const s=require('fs').readFileSync('wrangler.toml','utf8');const m=s.match(/^UUID\s*=\s*\"([^\"]+)\"/m);process.stdout.write(m?m[1]:'')")
+          if node .github/scripts/xhttp-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" cp.cloudflare.com 80 > /tmp/xhttp.log 2>&1; then
+            sed 's/^/  /' /tmp/xhttp.log
+            echo "::notice title=xHTTP tunnel OK::gRPC POST through $WORKER_URL reached the internet"
+            echo "- ✅ xHTTP (gRPC POST): tunnel OK" >> "$GITHUB_STEP_SUMMARY"
+          else
+            sed 's/^/  /' /tmp/xhttp.log
+            MSG=$(tr '\n' '~' < /tmp/xhttp.log | cut -c1-400)
+            echo "::warning title=xHTTP tunnel failed::$MSG"
+            echo "- ❌ xHTTP (gRPC POST): failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
