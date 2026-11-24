@@ -5,6 +5,9 @@ import net from 'node:net';
 
 const [, , rawUrl, rawUuid, targetHost = 'cp.cloudflare.com', targetPort = '80'] =
   process.argv;
+// The target port used inside the VLESS header. Can differ from the HTTP test
+// (e.g. 443 when the test itself speaks plaintext HTTP on port 80).
+const vlessPort = process.env.VLESS_PORT ?? targetPort;
 
 const uuidBytes = (uuid) => Buffer.from(uuid.replace(/-/g, ''), 'hex');
 
@@ -30,7 +33,7 @@ const payload = Buffer.from(
   'utf8'
 );
 
-const body = Buffer.concat([vlessHeader(rawUuid, targetHost, targetPort), payload]);
+const body = Buffer.concat([vlessHeader(rawUuid, targetHost, vlessPort), payload]);
 
 const run = async () => {
   const controller = new AbortController();

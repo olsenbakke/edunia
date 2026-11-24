@@ -164,7 +164,9 @@ jobs:
           set +e
           WORKER_URL="https://edcloudwasm.gavimovado.workers.dev"
           UUID_VALUE=$(node -e "const s=require('fs').readFileSync('wrangler.toml','utf8');const m=s.match(/^UUID\s*=\s*\"([^\"]+)\"/m);process.stdout.write(m?m[1]:'')")
-          if node .github/scripts/xhttp-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" example.com 80 > /tmp/xhttp.log 2>&1; then
+          # The tunnel request is plaintext HTTP to port 80, but it asks the Worker
+          # to connect to example.com:443 (TLS target) via VLESS_PORT.
+          if VLESS_PORT=443 node .github/scripts/xhttp-smoke-test.mjs "$WORKER_URL" "$UUID_VALUE" example.com 80 > /tmp/xhttp.log 2>&1; then
             sed 's/^/  /' /tmp/xhttp.log
             echo "::notice title=xHTTP tunnel OK::gRPC POST through $WORKER_URL reached the internet"
             echo "- ✅ xHTTP (gRPC POST): tunnel OK" >> "$GITHUB_STEP_SUMMARY"
